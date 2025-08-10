@@ -15,8 +15,8 @@ import numpy as np
 # Config & helpers
 # -------------------------
 st.set_page_config(page_title="ADGM Corporate Agent – Compliance Checker", layout="wide")
-st.title("ADGM Corporate Agent – Compliance & RAG-enabled Reviewer")
-st.write("Upload `.docx` files. The app will check required ADGM documents, run RAG-backed checks using Gemini, and produce an annotated docx + JSON report.")
+st.title("ADGM Corporate Agent")
+st.write("Upload `.docx` files.")
 
 # --- Load Gemini API Key from Streamlit secrets ---
 try:
@@ -196,7 +196,7 @@ def annotate_docx_bytes(original_bytesio, issues):
 # UI: File upload / processing
 # -------------------------
 st.markdown("## Upload Documents")
-uploaded_files = st.file_uploader("Upload one or more `.docx` files (use sample files if testing)", type=["docx"], accept_multiple_files=True)
+uploaded_files = st.file_uploader("Upload one or more `.docx` files", type=["docx"], accept_multiple_files=True)
 
 # load references for RAG (show count)
 refs = load_reference_texts(ref_dir="references")
@@ -245,7 +245,7 @@ if uploaded_files:
     # RAG build
     rag_context = build_rag_context(combined_text, refs, top_k=3)
     if rag_context:
-        st.subheader("RAG: Top relevant ADGM reference passages (used in prompt)")
+        st.subheader("RAG: Top relevant ADGM reference passages")
         st.text_area("RAG context", rag_context[:15000], height=200)
     else:
         st.info("No reference passages found or no `references/` texts available. RAG will be skipped.")
@@ -305,7 +305,7 @@ if uploaded_files:
                     if not isinstance(issues, list):
                         issues = []
 
-                    st.subheader(" AI Compliance Findings (parsed)")
+                    st.subheader(" AI Compliance Findings")
                     st.write(issues if issues else "No structured issues found. See raw AI output below.")
                     if not issues:
                         st.text_area("Raw AI output", raw_text, height=300)
@@ -324,7 +324,7 @@ if uploaded_files:
 
                 st.subheader("Downloadable Outputs")
                 # JSON report
-                st.download_button("⬇ Download JSON Report", json.dumps(final_report, indent=2), file_name="compliance_report.json", mime="application/json")
+                st.download_button("Download JSON Report", json.dumps(final_report, indent=2), file_name="compliance_report.json", mime="application/json")
 
                 # Annotated docx per uploaded file (combine issues by filename)
                 # group issues by document
@@ -339,8 +339,8 @@ if uploaded_files:
                     doc_issues = issues_by_doc.get(name, [])
                     annotated_bytesio = annotate_docx_bytes(orig_bytes, doc_issues)
                     # original bytes download
-                    st.download_button(f"⬇ Download original: {name}", data=info["bytes"], file_name=f"original_{name}", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                    st.download_button(f"Download original: {name}", data=info["bytes"], file_name=f"original_{name}", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
                     # annotated download
-                    st.download_button(f"⬇ Download annotated: reviewed_{name}", data=annotated_bytesio.getvalue(), file_name=f"reviewed_{name}", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                    st.download_button(f"Download annotated: reviewed_{name}", data=annotated_bytesio.getvalue(), file_name=f"reviewed_{name}", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
-                st.success("Processing complete. Include the JSON report and the reviewed .docx files as your submission artifacts.")
+                st.success("Processing complete.")
