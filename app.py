@@ -2,12 +2,12 @@ import streamlit as st
 from docx import Document
 import google.generativeai as genai
 from io import BytesIO
-import json  # <-- added for report download
+import json
 
 # --- Streamlit Page Config ---
 st.set_page_config(page_title="ADGM Corporate Agent", layout="wide")
 
-# --- Load Gemini API Key from Streamlit secrets ---
+# --- Load Gemini API Key ---
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 genai.configure(api_key=GEMINI_API_KEY)
 
@@ -15,8 +15,17 @@ genai.configure(api_key=GEMINI_API_KEY)
 st.title("🏢 ADGM Corporate Agent – Compliance Checker")
 st.write("Upload your company documents (.docx) to check for ADGM compliance.")
 
-# --- File Upload ---
-uploaded_file = st.file_uploader("Upload a .docx file", type=["docx"])
+# --- Multi-file Upload ---
+uploaded_files = st.file_uploader("Upload one or more .docx files", type=["docx"], accept_multiple_files=True)
+
+# --- Required checklist for incorporation ---
+REQUIRED_FOR_INCORPORATION = [
+    "Articles of Association",
+    "Memorandum of Association",
+    "Incorporation Application Form",
+    "UBO Declaration Form",
+    "Register of Members and Directors"
+]
 
 def extract_text_from_docx(file):
     """Extracts text from uploaded DOCX file."""
@@ -45,46 +54,55 @@ def check_document_with_adgm(full_text):
     return response.text
 
 # --- Processing ---
-if uploaded_file:
-    text = extract_text_from_docx(uploaded_file)
-    st.subheader("📄 Extracted Document Text")
-    st.text_area("Extracted Text", text, height=200)
+if uploaded_files:
+    # Gather all file names
+    present_types = [f.name for f in uploaded_files]
 
+    # Detect process
+    detected_process = "Company Incorporation" if any("association" in f.lower() for f in present_types) else "Unknown"
+
+    # Missing documents
+    missing_docs = [doc for doc in REQUIRED_FOR_INCORPORATION if doc.lower() not in " ".join(present_types).lower()]
+
+    # Show missing docs alert
+    if detected_process == "Company Incorporation":
+        if missing_docs:
+            st.error(f"⚠ You are attempting {detected_process}. Missing {len(missing_docs)} required document(s): {', '.join(missing_docs)}")
+        else:
+            st.success("✅ All required documents for Company Incorporation are present.")
+
+    # Combine text from all uploaded files
+    combined_text = ""
+    for f in uploaded_files:
+        combined_text += f"\n\n--- {f.name} ---\n\n"
+        combined_text += extract_text_from_docx(f)
+
+    st.subheader("📄 Extracted Document Text")
+    st.text_area("Extracted Text", combined_text, height=300)
+
+    # Run AI Compliance Check
     if st.button("✅ Run ADGM Compliance Check"):
-        with st.spinner("Checking document with Gemini..."):
-            result = check_document_with_adgm(text)
+        with st.spinner("Checking document(s) with Gemini..."):
+            result = check_document_with_adgm(combined_text)
         st.subheader("📊 Compliance Results")
         st.write(result)
 
-        # --- JSON Report Generation ---
-        REQUIRED_FOR_INCORPORATION = [
-            "Articles of Association",
-            "Memorandum of Association",
-            "Incorporation Application Form",
-            "UBO Declaration Form",
-            "Register of Members and Directors"
-        ]
-
-        present_types = [uploaded_file.name]  # currently only one file at a time
-        missing = [doc for doc in REQUIRED_FOR_INCORPORATION if doc not in " ".join(present_types)]
-
-        detected_process = "Company Incorporation" if any("association" in f.lower() for f in present_types) else "Unknown"
-
+        # JSON Report
         issues_list = [
             {
-                "document": uploaded_file.name,
+                "document": f.name,
                 "section": "Unknown",
                 "issue": "See AI-generated analysis",
                 "severity": "Review",
                 "suggestion": "Refer to compliance results above"
-            }
+            } for f in uploaded_files
         ]
 
         final_report = {
             "process": detected_process,
             "documents_uploaded": len(present_types),
             "required_documents": len(REQUIRED_FOR_INCORPORATION),
-            "missing_documents": missing,
+            "missing_documents": missing_docs,
             "issues_found": issues_list
         }
 
