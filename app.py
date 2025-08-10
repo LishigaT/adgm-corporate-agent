@@ -1,34 +1,33 @@
 import streamlit as st
 from docx import Document
-import fitz  # PyMuPDF
-import os
 import google.generativeai as genai
+from io import BytesIO
 
-# ----------------------------
-# Setup API Key
-# ----------------------------
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if not GEMINI_API_KEY:
-    st.error("❌ Gemini API Key not found. Please set it in Streamlit Secrets.")
-else:
-    genai.configure(api_key=GEMINI_API_KEY)
+# --- Streamlit Page Config ---
+st.set_page_config(page_title="ADGM Corporate Agent", layout="wide")
 
-# ----------------------------
-# Helper Functions
-# ----------------------------
-def extract_text_from_pdf(file_path):
-    text = ""
-    with fitz.open(file_path) as pdf:
-        for page in pdf:
-            text += page.get_text()
-    return text
+# --- Load Gemini API Key from Streamlit secrets ---
+GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+genai.configure(api_key=GEMINI_API_KEY)
 
-def extract_text_from_docx(file_path):
-    doc = Document(file_path)
-    return "\n".join([p.text for p in doc.paragraphs])
+# --- App Title ---
+st.title("🏢 ADGM Corporate Agent – Compliance Checker")
+st.write("Upload your company documents (.docx) to check for ADGM compliance.")
+
+# --- File Upload ---
+uploaded_file = st.file_uploader("Upload a .docx file", type=["docx"])
+
+def extract_text_from_docx(file):
+    """Extracts text from uploaded DOCX file."""
+    doc = Document(file)
+    full_text = []
+    for para in doc.paragraphs:
+        if para.text.strip():
+            full_text.append(para.text.strip())
+    return "\n".join(full_text)
 
 def check_document_with_adgm(full_text):
-    """Send the entire document at once to Gemini."""
+    """Sends the entire document to Gemini for compliance checking."""
     model = genai.GenerativeModel("gemini-1.5-flash")
     prompt = f"""
     You are an ADGM Corporate Agent compliance checker.
@@ -43,39 +42,15 @@ def check_document_with_adgm(full_text):
     """
     response = model.generate_content(prompt)
     return response.text
-# ----------------------------
-# Streamlit UI
-# ----------------------------
-st.set_page_config(page_title="ADGM Corporate Agent (Gemini)", layout="wide")
-st.title("🏛️ ADGM Corporate Agent Compliance Checker (Gemini)")
 
-uploaded_file = st.file_uploader("📄 Upload a .docx or .pdf file", type=["docx", "pdf"])
-
+# --- Processing ---
 if uploaded_file:
-    file_path = f"temp.{uploaded_file.name.split('.')[-1]}"
-    with open(file_path, "wb") as f:
-        f.write(uploaded_file.read())
-
-    if file_path.endswith(".pdf"):
-        text = extract_text_from_pdf(file_path)
-    else:
-        text = extract_text_from_docx(file_path)
-
-    st.subheader("📜 Extracted Document Text")
+    text = extract_text_from_docx(uploaded_file)
+    st.subheader("📄 Extracted Document Text")
     st.text_area("Extracted Text", text, height=200)
 
-if st.button("✅ Run ADGM Compliance Check"):
-    with st.spinner("Checking document with Gemini..."):
-        result = check_document_with_adgm(text)
-    st.subheader("📊 Compliance Results")
-    st.write(result)
-        with st.spinner("Checking clauses with Gemini..."):
-            for para in paragraphs:
-                check_result = check_clause_with_adgm(para)
-                results.append({"clause": para, "result": check_result})
-
+    if st.button("✅ Run ADGM Compliance Check"):
+        with st.spinner("Checking document with Gemini..."):
+            result = check_document_with_adgm(text)
         st.subheader("📊 Compliance Results")
-        for res in results:
-            st.markdown(f"**Clause:** {res['clause']}")
-            st.markdown(f"**Result:** {res['result']}")
-            st.markdown("---")
+        st.write(result)
