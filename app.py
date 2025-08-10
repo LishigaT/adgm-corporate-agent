@@ -1,100 +1,79 @@
 import streamlit as st
 from docx import Document
-from io import BytesIO
-import json
+import fitz  # PyMuPDF
 import os
-from openai import OpenAI
+import google.generativeai as genai
 
-# Load API key from environment variable
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-client = OpenAI(api_key=OPENAI_API_KEY)
+# ----------------------------
+# Setup API Key
+# ----------------------------
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if not GEMINI_API_KEY:
+    st.error("❌ Gemini API Key not found. Please set it in Streamlit Secrets.")
+else:
+    genai.configure(api_key=GEMINI_API_KEY)
 
-# Streamlit page config
-st.set_page_config(page_title="ADGM Corporate Agent", layout="centered")
-st.title(" ADGM Corporate Agent – Legal Compliance Checker")
-st.write("Upload your company incorporation documents (.docx) and check them for ADGM compliance.")
+# ----------------------------
+# Helper Functions
+# ----------------------------
+def extract_text_from_pdf(file_path):
+    text = ""
+    with fitz.open(file_path) as pdf:
+        for page in pdf:
+            text += page.get_text()
+    return text
 
-# File upload
-uploaded_file = st.file_uploader(" Upload a .docx file", type=["docx"])
+def extract_text_from_docx(file_path):
+    doc = Document(file_path)
+    return "\n".join([p.text for p in doc.paragraphs])
 
-# Function to read DOCX
-def read_docx(file):
-    doc = Document(file)
-    return "\n".join([p.text for p in doc.paragraphs if p.text.strip() != ""])
-
-# Compliance check using OpenAI
-def check_clause_with_adgm(clause_text):
+def check_clause_with_adgm(clause):
+    """Send the clause to Gemini for compliance checking."""
+    model = genai.GenerativeModel("gemini-1.5-flash")
     prompt = f"""
-    You are an expert in ADGM legal compliance.
-    Check the following clause for compliance with ADGM company incorporation rules.
-    Respond in JSON format with:
-    - issue: string
-    - severity: High/Medium/Low
-    - suggestion: string
-    - reference: string
-
-    Clause: {clause_text}
+    You are an ADGM Corporate Agent compliance checker.
+    Compare the following clause against ADGM corporate regulations and return:
+    - Compliance status (Compliant/Non-Compliant)
+    - Issue details if non-compliant
+    - Suggestions for correction
+    Clause:
+    {clause}
     """
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "You are an ADGM compliance expert."},
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0
-    )
-    try:
-        return json.loads(response.choices[0].message.content)
-    except:
-        return {
-            "issue": "Could not parse AI response",
-            "severity": "Low",
-            "suggestion": "Check manually",
-            "reference": "N/A"
-        }
+    response = model.generate_content(prompt)
+    return response.text
 
-# Process uploaded file
+# ----------------------------
+# Streamlit UI
+# ----------------------------
+st.set_page_config(page_title="ADGM Corporate Agent (Gemini)", layout="wide")
+st.title("🏛️ ADGM Corporate Agent Compliance Checker (Gemini)")
+
+uploaded_file = st.file_uploader("📄 Upload a .docx or .pdf file", type=["docx", "pdf"])
+
 if uploaded_file:
-    text_content = read_docx(uploaded_file)
-    st.subheader(" Extracted Text")
-    st.text_area("", text_content, height=200)
+    file_path = f"temp.{uploaded_file.name.split('.')[-1]}"
+    with open(file_path, "wb") as f:
+        f.write(uploaded_file.read())
 
-    if st.button(" Run ADGM Compliance Check"):
-        clauses = [p for p in text_content.split("\n") if p.strip()]
+    if file_path.endswith(".pdf"):
+        text = extract_text_from_pdf(file_path)
+    else:
+        text = extract_text_from_docx(file_path)
+
+    st.subheader("📜 Extracted Document Text")
+    st.text_area("Extracted Text", text, height=200)
+
+    if st.button("✅ Run ADGM Compliance Check"):
+        paragraphs = [p.strip() for p in text.split("\n") if p.strip()]
         results = []
 
-        doc = Document(uploaded_file)
-        for para in doc.paragraphs:
-            if para.text.strip():
-                res = check_clause_with_adgm(para.text.strip())
-                results.append({
-                    "clause": para.text.strip(),
-                    "result": res
-                })
-                if res.get("issue") != "No issues":
-                    para.add_comment(f"Issue: {res['issue']}\nSuggestion: {res['suggestion']}")
+        with st.spinner("Checking clauses with Gemini..."):
+            for para in paragraphs:
+                check_result = check_clause_with_adgm(para)
+                results.append({"clause": para, "result": check_result})
 
-        # Save reviewed DOCX
-        reviewed_bytes = BytesIO()
-        doc.save(reviewed_bytes)
-        reviewed_bytes.seek(0)
-
-        # Show JSON report
-        st.subheader("Compliance Report")
-        st.json(results)
-
-        # Download button
-        st.download_button(
-            label="⬇ Download Reviewed Document",
-            data=reviewed_bytes,
-            file_name="reviewed_document.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
-
-        # Save JSON
-        st.download_button(
-            label="⬇ Download JSON Report",
-            data=json.dumps(results, indent=2),
-            file_name="compliance_report.json",
-            mime="application/json"
-        )
+        st.subheader("📊 Compliance Results")
+        for res in results:
+            st.markdown(f"**Clause:** {res['clause']}")
+            st.markdown(f"**Result:** {res['result']}")
+            st.markdown("---")
