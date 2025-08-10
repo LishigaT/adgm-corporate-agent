@@ -27,21 +27,22 @@ def extract_text_from_docx(file_path):
     doc = Document(file_path)
     return "\n".join([p.text for p in doc.paragraphs])
 
-def check_clause_with_adgm(clause):
-    """Send the clause to Gemini for compliance checking."""
+def check_document_with_adgm(full_text):
+    """Send the entire document at once to Gemini."""
     model = genai.GenerativeModel("gemini-1.5-flash")
     prompt = f"""
     You are an ADGM Corporate Agent compliance checker.
-    Compare the following clause against ADGM corporate regulations and return:
-    - Compliance status (Compliant/Non-Compliant)
-    - Issue details if non-compliant
-    - Suggestions for correction
-    Clause:
-    {clause}
+    Analyze the following document for ADGM compliance issues.
+    For each clause:
+    - State if it's Compliant or Non-Compliant
+    - Give details of the issue (if any)
+    - Suggest a correction if non-compliant
+
+    Document:
+    {full_text}
     """
     response = model.generate_content(prompt)
     return response.text
-
 # ----------------------------
 # Streamlit UI
 # ----------------------------
@@ -63,10 +64,11 @@ if uploaded_file:
     st.subheader("📜 Extracted Document Text")
     st.text_area("Extracted Text", text, height=200)
 
-    if st.button("✅ Run ADGM Compliance Check"):
-        paragraphs = [p.strip() for p in text.split("\n") if p.strip()]
-        results = []
-
+if st.button("✅ Run ADGM Compliance Check"):
+    with st.spinner("Checking document with Gemini..."):
+        result = check_document_with_adgm(text)
+    st.subheader("📊 Compliance Results")
+    st.write(result)
         with st.spinner("Checking clauses with Gemini..."):
             for para in paragraphs:
                 check_result = check_clause_with_adgm(para)
