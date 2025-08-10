@@ -254,7 +254,7 @@ if uploaded_files:
     if GEMINI_API_KEY is None:
         st.warning("Gemini key missing: AI compliance checks disabled. Add `GEMINI_API_KEY` in Streamlit secrets to enable.")
     else:
-        if st.button("Run RAG-backed ADGM Compliance Check (Gemini)"):
+        if st.button("ADGM Compliance Check (Gemini)"):
             with st.spinner("Calling Gemini and analyzing... (this may take a few seconds)"):
                 # Prepare prompt
                 prompt_parts = [
